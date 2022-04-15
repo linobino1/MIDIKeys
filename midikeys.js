@@ -4,103 +4,157 @@
 class MyMIDIMessageEvent extends MIDIMessageEvent {
     data = null
 }
-/*
- * Midikeys.js
- * > Turn your keyboard into a midi keyboard, compatible with the Web MIDI API.
- * Copyright 2012 Nick Thompson
- * MIT License
- * https://gist.github.com/3995530
- */
-(function (window, document, undefined) {
 
-    // Keycode to MIDI note values
-    var map = {};
-  
-    map[81]  = 72; // q C5
-    map[87]  = 74; // w D5
-    map[69]  = 76; // e E5
-    map[82]  = 77; // r F5
-    map[84]  = 79; // t G5
-    map[89]  = 81; // y A5
-    map[85]  = 83; // u B5
-    map[73]  = 84; // i C6
-    map[79]  = 86; // o D6
-    map[80]  = 88; // p E6
-    map[219] = 89; // [ F6
-    map[221] = 91; // ] G6
-  
-    map[83]  = 61; // s C#4
-    map[68]  = 63; // d D#4
-    map[71]  = 66; // g F#4
-    map[72]  = 68; // h G#4
-    map[74]  = 70; // j A#4
-    map[76]  = 73; // l C#5
-    map[186] = 75; // ; D#5
-  
-    map[90]  = 60; // z C4
-    map[88]  = 62; // x D4
-    map[67]  = 64; // c E4
-    map[86]  = 65; // v F4
-    map[66]  = 67; // b G4
-    map[78]  = 69; // n A4
-    map[77]  = 71; // m B4
-    map[188] = 72; // , C5
-    map[190] = 74; // . D5
-    map[191] = 76; // / E5
-  
-    // Keep track of keydown and keyup events so that the keydown event doesn't
-    // send messages repeatedly until keyup.
-    var flags = {};
-  
-    function sendMessage (e, command) {
-      // Check the event key against the midi map.
-      var note = map[ (typeof e.which === "number")? e.which : e.keyCode ];
-  
-      // If the key doesn't exist in the midi map, or we're trying to send a
-      // noteOn event without having most recently sent a noteOff, end here.
-      if (note === undefined || (flags[note] && command === 0x9)) {
-        return false;
-      }
-  
-      // Build the data
-      var data = new Uint8Array(3);
-  
-      data[0] = (command << 4) + 0x00;  // Send the command on channel 0
-      data[1] = note;                   // Attach the midi note
-      data[2] = 127;                    // Keyboard keys default to 127 velocity.
-  
-      // Package the message
-    var msg = new MyMIDIMessageEvent('MIDIMessageEvent')
-    msg.data = data
-  
-      // Send it
-    //   api.onmessage.call(window, [msg]);
-      api.onmessage.call(window, msg);
-  
-      // Update the flag table
-      if (command === 0x9) {
-        flags[note] = true;
-      } else {
-        flags[note] = false;
-      }
-    }
-  
-    document.addEventListener("keydown", function (e) {
-      sendMessage(e, 0x09);
-    });
-  
-    document.addEventListener("keyup", function (e) {
-      sendMessage(e, 0x08);
-    });
-  
-    // MIDIKeys api object, to be exposed as window.Keys
-    var api = {
-  
-      // Expose the onmessage parameter like on a MIDIInput object
-      onmessage: null
-  
-    };
-  
-    window.MIDIKeys = api;
-  
-  })(this, this.document);
+export class MidiKeys {
+	static KEY_TYPE_NONE = 0
+	static KEY_TYPE_CONTROL = 1
+	static KEY_TYPE_NOTE = 2
+
+	static map = {
+		qwertz: {
+			// note keys
+			65: 0,	// A -> C
+			87: 1,	// W -> C#
+			83: 2,	// S -> D
+			69: 3,	// E -> D#
+			68: 4,	// D -> E
+			70: 5,	// F -> F
+			84: 6,	// T -> F#
+			71: 7,	// G -> G
+			90: 8,	// Z -> G#
+			72: 9,	// H -> A
+			85: 10,	// U -> A#
+			74: 11,	// J -> B
+			75: 12,	// K -> C
+			79: 13,	// O -> C#
+			76: 14,	// L -> D
+			80: 15,	// P -> D#
+			186: 16,	// Ö -> E
+			222: 17,	// Ä -> F
+
+			// control keys
+			89: () => this.octaveDown(),
+			88: () => this.octaveUp(),
+			67: () => this.velDown(),
+			86: () => this.velUp(),
+		}
+	}
+	static MIN_OCTAVE = 0
+	static MAX_OCTAVE = 9
+	static MIN_VEL = 1
+	static MAX_VEL = 127
+	static VEL_STEP = 10
+
+	static octave = 3
+	static vel = 127
+	static keys_pressed = []
+
+	static COMMAND_KEYDOWN = 0x9
+	static COMMAND_KEYUP = 0x8
+
+	static getKeyboardLayout() {
+		return 'qwertz'
+	}
+
+	static getMap() {
+		if (!(this.getKeyboardLayout() in this.map)) {
+			throw "undefined keyboard layout"
+		}
+		return this.map[this.getKeyboardLayout()]
+	}
+
+	static setup(api = (msg) => console.log("MidiKeys: no api to deliver message", msg)) {
+		this.api = api
+		document.addEventListener("keydown", function(event) {
+			MidiKeys.handleKeyEvent(event)
+		});
+		document.addEventListener("keyup", function(event) {
+			MidiKeys.handleKeyEvent(event)
+		});
+	}
+
+	static handleKeyEvent(event) {
+
+		let keyId = this.getKeyIdOfKeyEvent(event)
+		let keyType = this.getKeyType(keyId)
+		
+		// some other key has been pressed or released
+		if (keyType === this.KEY_TYPE_NONE) return
+
+		let keyMapped = this.getMap()[keyId]
+
+		// control key?
+		if (keyType === this.KEY_TYPE_CONTROL && event.type === 'keydown') {
+			keyMapped()
+		}
+
+		// note key?
+		if (keyType === this.KEY_TYPE_NOTE) {
+			let pitch = this.getPitch(keyMapped)
+			if (event.type === 'keydown') {
+				// key still pressed?
+				if (this.keys_pressed[pitch]) return
+				
+			console.log("P",pitch)
+				this.noteTrigger(pitch)
+				this.keys_pressed[pitch] = true
+			} else {
+				this.noteRelease(pitch)
+				this.keys_pressed[pitch] = false
+			}
+		}
+	}
+
+	static getKeyIdOfKeyEvent(event) {
+		return (typeof event.which === "number") ? event.which : event.keyCode
+	}
+
+	static getKeyType(keyId) {
+		if (!(keyId in this.getMap())) return this.KEY_TYPE_NONE
+		let res = this.getMap()[keyId]
+		if (typeof res === 'number') return this.KEY_TYPE_NOTE
+		return this.KEY_TYPE_CONTROL
+	}
+
+	static noteTrigger(pitch) {
+		this.sendMessage(this.COMMAND_KEYDOWN, pitch, this.vel)
+	}
+
+	static noteRelease(pitch) {
+		this.sendMessage(this.COMMAND_KEYUP, pitch)
+	}
+
+	static sendMessage(command, pitch, vel) {
+		let data = new Uint8Array(3)
+        data[0] = (command << 4) + 0x00; // Send the command on channel 0
+        data[1] = pitch; // Attach the midi note
+        data[2] = vel;
+
+		let msg = new MyMIDIMessageEvent('MIDIMessageEvent')
+		msg.data = data
+		console.log("MSG", data)
+
+		this.api(msg)
+	}
+
+	static getPitch(note) {
+		return (this.octave * 12) + note
+	}
+
+	/** CONTROLS **********************************************/
+	static octaveDown() {
+		this.octave = Math.max(this.octave - 1, this.MIN_OCTAVE)
+	}
+
+	static octaveUp() {
+		this.octave = Math.min(this.octave + 1, this.MAX_OCTAVE)
+	}
+
+	static velDown() {
+		this.vel = Math.max(this.vel - this.VEL_STEP, this.MIN_VEL)
+	}
+
+	static velUp() {
+		this.vel = Math.min(this.vel + this.VEL_STEP, this.MAX_VEL)
+	}
+}
