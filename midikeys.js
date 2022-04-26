@@ -33,10 +33,11 @@ export class MidiKeys {
 			222: 17,	// Ä -> F
 
 			// control keys
-			89: () => this.octaveDown(),
-			88: () => this.octaveUp(),
-			67: () => this.velDown(),
-			86: () => this.velUp(),
+			89: {keydown: () => this.octaveDown()},
+			88: {keydown: () => this.octaveUp()},
+			67: {keydown: () => this.velDown()},
+			86: {keydown: () => this.velUp()},
+			32: {keydown: () => this.pedal(1), keyup: () => this.pedal(0)}
 		}
 	}
 	static MIN_OCTAVE = 0
@@ -45,12 +46,20 @@ export class MidiKeys {
 	static MAX_VEL = 127
 	static VEL_STEP = 10
 
+	static verbose = false
 	static octave = 3
 	static vel = 127
 	static keys_pressed = []
 
 	static COMMAND_KEYDOWN = 0x9
 	static COMMAND_KEYUP = 0x8
+	static COMMAND_CC = 0xB
+	static COMMAND_CC_PEDAL = 0x4
+
+	static log(...o) {
+		if (!this.verbose) return
+		console.log("MidiKeys: OCT", this.octave, " VEL", this.vel, ...o)
+	}
 
 	static getKeyboardLayout() {
 		return 'qwertz'
@@ -81,26 +90,31 @@ export class MidiKeys {
 		// some other key has been pressed or released
 		if (keyType === this.KEY_TYPE_NONE) return
 
+		// prevent keys that are pressed from constantly firing keypress event
+		if (event.type === 'keydown') {
+			if (this.keys_pressed[keyId]) return
+			this.keys_pressed[keyId] = true
+		} else {
+			this.keys_pressed[keyId] = false
+		}
+
 		let keyMapped = this.getMap()[keyId]
 
 		// control key?
-		if (keyType === this.KEY_TYPE_CONTROL && event.type === 'keydown') {
-			keyMapped()
+		if (keyType === this.KEY_TYPE_CONTROL) {
+			if (event.type in keyMapped) {
+				(keyMapped[event.type])()
+				this.log()
+			}
 		}
 
 		// note key?
 		if (keyType === this.KEY_TYPE_NOTE) {
 			let pitch = this.getPitch(keyMapped)
 			if (event.type === 'keydown') {
-				// key still pressed?
-				if (this.keys_pressed[pitch]) return
-				
-			console.log("P",pitch)
 				this.noteTrigger(pitch)
-				this.keys_pressed[pitch] = true
 			} else {
 				this.noteRelease(pitch)
-				this.keys_pressed[pitch] = false
 			}
 		}
 	}
@@ -145,7 +159,7 @@ export class MidiKeys {
 	static octaveDown() {
 		this.octave = Math.max(this.octave - 1, this.MIN_OCTAVE)
 	}
-
+	
 	static octaveUp() {
 		this.octave = Math.min(this.octave + 1, this.MAX_OCTAVE)
 	}
@@ -156,5 +170,16 @@ export class MidiKeys {
 
 	static velUp() {
 		this.vel = Math.min(this.vel + this.VEL_STEP, this.MAX_VEL)
+	}
+	
+	static pedal(on) {
+		if (on) {
+			// vel >= 64: pedal on
+			this.sendMessage(this.COMMAND_CC, this.COMMAND_CC_PEDAL, 127)
+		} else {
+			// vel < 64: pedal off
+			this.sendMessage(this.COMMAND_CC, this.COMMAND_CC_PEDAL, 0)
+		}
+		this.log("PEDAL", !!on)
 	}
 }
