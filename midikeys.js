@@ -33,11 +33,11 @@ export class MidiKeys {
 			222: 17,	// Ä -> F
 
 			// control keys
-			89: {keydown: () => this.octaveDown()},
-			88: {keydown: () => this.octaveUp()},
-			67: {keydown: () => this.velDown()},
-			86: {keydown: () => this.velUp()},
-			32: {keydown: () => this.pedal(1), keyup: () => this.pedal(0)}
+			89: {keydown: () => this.octaveDown()},		// Y
+			88: {keydown: () => this.octaveUp()},		// X
+			67: {keydown: () => this.velDown()},		// C
+			86: {keydown: () => this.velUp()},			// V
+			16: {keydown: () => this.pedal(1), keyup: () => this.pedal(0)}	// Shift
 		}
 	}
 	static MIN_OCTAVE = 0
@@ -54,11 +54,11 @@ export class MidiKeys {
 	static COMMAND_KEYDOWN = 0x9
 	static COMMAND_KEYUP = 0x8
 	static COMMAND_CC = 0xB
-	static COMMAND_CC_PEDAL = 0x4
+	static COMMAND_CC_PEDAL = 0x40
 
 	static log(...o) {
 		if (!this.verbose) return
-		console.log("MidiKeys: OCT", this.octave, " VEL", this.vel, ...o)
+		console.log("MidiKeys: OCT", this.octave, " VEL", this.vel, "pressed", this.keys_pressed, ...o)
 	}
 
 	static getKeyboardLayout() {
@@ -117,6 +117,7 @@ export class MidiKeys {
 				this.noteRelease(pitch)
 			}
 		}
+		this.log()
 	}
 
 	static getKeyIdOfKeyEvent(event) {
@@ -140,13 +141,12 @@ export class MidiKeys {
 
 	static sendMessage(command, pitch, vel) {
 		let data = new Uint8Array(3)
-        data[0] = (command << 4) + 0x00; // Send the command on channel 0
+        data[0] = (command << 4) + 0x00; // Send the command on channel 1
         data[1] = pitch; // Attach the midi note
         data[2] = vel;
 
 		let msg = new MyMIDIMessageEvent('MIDIMessageEvent')
 		msg.data = data
-		console.log("MSG", data)
 
 		this.api(msg)
 	}
